@@ -1,0 +1,158 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum UserRole {
+  owner
+  customer
+}
+
+enum VoucherStatus {
+  available
+  sold
+  reserved
+}
+
+enum TrxStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum SmsStatus {
+  sent
+  failed
+}
+
+// ==========================================
+// MODELS (Tabel Database)
+// ==========================================
+
+/**
+ * Profile Model
+ * Synced manually with Supabase auth.users via ID
+ * Used for customer accounts (future roadmap)
+ */
+model Profile {
+  id        String   @id @db.Uuid
+  email     String   @unique
+  role      UserRole @default(customer)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("profiles")
+}
+
+/**
+ * Admin Model
+ * Owner/Admin account for dashboard access
+ * Separated from Profile for security isolation
+ */
+model Admin {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("admins")
+}
+
+
+
+/**
+ * Product Model
+ * Digital products available for sale
+ * Linked to Category for organization
+ */
+model Product {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  vouchers     Voucher[]
+  transactions Transaction[]
+
+  @@map("products")
+}
+
+/**
+ * Voucher Model (INVENTORY CORE)
+ * Physical voucher codes entered by owner
+ * Status tracks availability for sale
+ */
+model Voucher {
+  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId String        @map("product_id") @db.Uuid
+  code      String        // Voucher code (encrypted at rest)
+  status    VoucherStatus @default(available)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  transaction Transaction? // One-to-One (one voucher = one successful transaction)
+
+  @@index([productId, status]) // Optimize voucher lookup queries
+  @@map("vouchers")
+}
+
+/**
+ * Transaction Model
+ * Records all purchase attempts
+ * Links to voucher only upon successful payment
+ */
+model Transaction {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId     String    @unique @map("order_id") // ID from Midtrans
+  productId   String    @map("product_id") @db.Uuid
+  voucherId   String?   @unique @map("voucher_id") @db.Uuid // Nullable (assigned after success)
+  phoneNumber String    @map("phone_number")
+  amount      Decimal   @db.Decimal(10, 2) // Price at time of purchase
+  status      TrxStatus @default(PENDING)
+  paidAt      DateTime? @map("paid_at") // Timestamp when payment confirmed
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  product Product  @relation(fields: [productId], references: [id])
+  voucher Voucher? @relation(fields: [voucherId], references: [id])
+  smsLogs SmsLog[]
+
+  @@index([status, createdAt]) // Optimize transaction queries
+  @@map("transactions")
+}
+
+/**
+ * SmsLog Model
+ * Tracks all SMS delivery attempts
+ * Essential for debugging delivery issues
+ */
+model SmsLog {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transactionId String    @map("transaction_id") @db.Uuid
+  phoneNumber   String    @map("phone_number")
+  message       String    @map("message_content")
+  status        SmsStatus
+  providerRef   String?   @map("provider_ref") // Reference ID from SMS provider
+  sentAt        DateTime  @default(now()) @map("sent_at")
+
+  // Relations
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId])
+  @@map("sms_logs")
+}
