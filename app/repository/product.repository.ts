@@ -91,5 +91,5 @@ export async function countProductsRepository(filters: Partial<Pick<CreateProduc
 }
 
 export async function findProductsByCategoryRepository(categoryId: string) {
-  return prisma.product.findMany({ where: { categoryId, isActive: true }, orderBy: { name: "asc" } });
+  return prisma.product.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });
 }

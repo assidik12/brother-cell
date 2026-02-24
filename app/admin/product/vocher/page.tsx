@@ -5,10 +5,36 @@ import { VoucherAPI } from "@/app/service/voucher/api";
 import { ProductAPI } from "@/app/service/product/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
+// ==========================================
+// LOADING COMPONENT
+// ==========================================
+function VoucherPageLoading() {
+  return (
+    <div className="flex items-center justify-center min-h-100">
+      <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+    </div>
+  );
+}
+
+// ==========================================
+// MAIN PAGE WRAPPER (with Suspense)
+// ==========================================
 export default function VoucherPage() {
+  return (
+    <Suspense fallback={<VoucherPageLoading />}>
+      <VoucherPageContent />
+    </Suspense>
+  );
+}
+
+// ==========================================
+// PAGE CONTENT (uses useSearchParams)
+// ==========================================
+function VoucherPageContent() {
   const searchParams = useSearchParams();
   const productId = searchParams.get("productId") || "";
   const queryClient = useQueryClient();
