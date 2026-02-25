@@ -6,8 +6,8 @@
  * Logika bisnis didelegasikan ke Service layer.
  */
 
-import AuthService from "@/app/service/auth";
 import { SignIn } from "@/app/service/auth/method";
+import { compareSync } from "bcrypt";
 import { NextAuthOptions } from "next-auth";
 import NextAuth from "next-auth/next";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -36,19 +36,34 @@ const authOptions: NextAuthOptions = {
           throw new Error("Username dan password wajib diisi");
         }
 
-        // Delegate ke Service layer
-        const result = await SignIn(credentials.username);
-        console.log("AuthService.signIn result:", result);
+        try {
+          // Find user in database
+          const admin = await SignIn(credentials.username);
+          console.log("SignIn lookup result:", admin ? "User found" : "User not found");
 
-        // Return user object for JWT (or null on failure)
-        if (!result) {
+          if (!admin) {
+            console.log("Admin not found for username:", credentials.username);
+            return null;
+          }
+
+          // Verify password
+          const isPasswordValid = compareSync(credentials.password, admin.password);
+          console.log("Password verification:", isPasswordValid ? "Valid" : "Invalid");
+
+          if (!isPasswordValid) {
+            return null;
+          }
+
+          // Return user object for JWT
+          return {
+            id: admin.id,
+            name: admin.username,
+            role: "owner",
+          };
+        } catch (error) {
+          console.error("Authorization error:", error);
           return null;
         }
-        return {
-          id: result.id,
-          name: result.username,
-          role: "owner",
-        };
       },
     }),
   ],

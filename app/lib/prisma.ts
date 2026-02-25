@@ -24,16 +24,17 @@ function getConnectionString(): string {
       fs.writeFileSync(tempCertPath, certContent);
 
       // Replace the sslrootcert path in the URL
+      // Use verify-full as recommended by pg library warning
       const url = new URL(baseUrl);
-      url.searchParams.set("sslmode", "verify-ca");
+      url.searchParams.set("sslmode", "verify-full");
       url.searchParams.set("sslrootcert", tempCertPath);
 
       return url.toString();
     } catch (error) {
       console.error("Failed to setup SSL certificate:", error);
-      // Fallback to require mode without cert verification
+      // Fallback - use verify-full without custom cert (relies on system certs)
       const url = new URL(baseUrl);
-      url.searchParams.set("sslmode", "require");
+      url.searchParams.set("sslmode", "verify-full");
       url.searchParams.delete("sslrootcert");
       return url.toString();
     }
