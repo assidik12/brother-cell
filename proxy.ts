@@ -1,9 +1,11 @@
 /**
- * @file middleware.ts
- * @description Next.js middleware for route protection
+ * @file proxy.ts
+ * @description Next.js proxy for route protection (formerly middleware.ts)
  *
  * Protects admin routes and redirects unauthenticated users to login.
  * Uses NextAuth.js JWT token for authentication check.
+ *
+ * @see https://nextjs.org/docs/app/api-reference/file-conventions/proxy
  */
 
 import { NextResponse } from "next/server";
@@ -18,10 +20,10 @@ const protectedRoutes = ["/admin"];
 const authRoutes = ["/auth/login", "/auth/register"];
 
 // ==========================================
-// MIDDLEWARE FUNCTION
+// PROXY FUNCTION (renamed from middleware)
 // ==========================================
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Get the JWT token from the request
