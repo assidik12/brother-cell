@@ -90,6 +90,8 @@ export async function countProductsRepository(filters: Partial<Pick<CreateProduc
   return prisma.product.count({ where });
 }
 
-export async function findProductsByCategoryRepository(categoryId: string) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function findProductsByCategoryRepository(_categoryId: string) {
+  // Note: categoryId is reserved for future use when categories are implemented
   return prisma.product.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });
 }
