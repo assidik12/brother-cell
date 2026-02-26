@@ -39,16 +39,13 @@ const authOptions: NextAuthOptions = {
         try {
           // Find user in database
           const admin = await SignIn(credentials.username);
-          console.log("SignIn lookup result:", admin ? "User found" : "User not found");
 
           if (!admin) {
-            console.log("Admin not found for username:", credentials.username);
             return null;
           }
 
           // Verify password
           const isPasswordValid = compareSync(credentials.password, admin.password);
-          console.log("Password verification:", isPasswordValid ? "Valid" : "Invalid");
 
           if (!isPasswordValid) {
             return null;

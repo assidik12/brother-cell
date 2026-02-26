@@ -23,12 +23,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
 
-    // Auth check
-    const session = await getServerSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
-
     const result = await getProductById(id);
 
     if (!result.success) {

@@ -16,12 +16,6 @@ import { createProduct, getProducts } from "@/app/service/product";
 
 export async function GET(request: NextRequest) {
   try {
-    // Auth check (optional for public listing, required for admin)
-    const session = await getServerSession();
-    if (!session) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
-
     // Parse query params
     const { searchParams } = new URL(request.url);
     const filters = {
@@ -71,8 +65,6 @@ export async function POST(request: NextRequest) {
     };
 
     const result = await createProduct(input);
-
-    console.log("Product created:", result);
 
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error, errors: result.errors }, { status: 400 });

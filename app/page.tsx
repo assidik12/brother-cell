@@ -25,12 +25,6 @@ function ProductCatalogSkeleton() {
           <p className="text-sm sm:text-base text-gray-500 max-w-xl mx-auto">Pilih voucher atau paket data yang Anda butuhkan</p>
         </div>
 
-        {/* Loading Indicator */}
-        <div className="flex flex-col items-center justify-center py-16">
-          <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-          <p className="text-gray-500 text-sm">Memuat produk...</p>
-        </div>
-
         {/* Skeleton Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {[1, 2, 3, 4, 5, 6].map((i) => (
