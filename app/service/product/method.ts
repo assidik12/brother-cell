@@ -118,9 +118,9 @@ export async function getProducts(filters: ProductFilterInput): Promise<
     const opts: FindProductsOptions = {
       page: validated.data.page,
       perPage: validated.data.limit,
-      search: validated.data.search,
-      categoryId: validated.data.categoryId,
-      isActive: validated.data.isActive,
+      search: validated.data.search ?? undefined,
+      categoryId: validated.data.categoryId ?? undefined,
+      isActive: validated.data.isActive ?? undefined,
     };
 
     const result = await findProductsRepository(opts);
