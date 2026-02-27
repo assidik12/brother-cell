@@ -5,11 +5,6 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-/**
- * Get SSL configuration for database connection
- * - Local: Uses ./ca.pem file directly
- * - Vercel: Decodes DATABASE_CA_BASE64 env var and writes to temp file
- */
 function getConnectionString(): string {
   const baseUrl = process.env.DATABASE_URL || "";
 
@@ -31,7 +26,7 @@ function getConnectionString(): string {
 
       return url.toString();
     } catch (error) {
-      console.error("Failed to setup SSL certificate:", error);
+      console.error("[prisma] Failed to setup SSL certificate:", error);
       // Fallback - use verify-full without custom cert (relies on system certs)
       const url = new URL(baseUrl);
       url.searchParams.set("sslmode", "verify-full");

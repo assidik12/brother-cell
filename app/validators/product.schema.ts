@@ -33,9 +33,9 @@ export type ProductUpdateInput = z.infer<typeof productUpdateSchema>;
 // ==========================================
 
 export const productFilterSchema = z.object({
-  categoryId: z.string().uuid().optional(),
-  search: z.string().optional(),
-  isActive: z.boolean().optional(),
+  categoryId: z.string().uuid().optional().nullable(),
+  search: z.string().optional().nullable(),
+  isActive: z.boolean().optional().nullable(),
   page: z.number().int().positive().default(1),
   limit: z.number().int().positive().max(100).default(10),
 });

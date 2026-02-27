@@ -18,18 +18,28 @@ export async function GET(request: NextRequest) {
   try {
     // Parse query params
     const { searchParams } = new URL(request.url);
+
+    // Parse isActive: convert string "true"/"false" to boolean, or undefined
+    const isActiveParam = searchParams.get("isActive");
+    let isActive: boolean | undefined = undefined;
+    if (isActiveParam === "true") isActive = true;
+    else if (isActiveParam === "false") isActive = false;
+
     const filters = {
       page: parseInt(searchParams.get("page") || "1", 10),
       limit: parseInt(searchParams.get("limit") || "10", 10),
       search: searchParams.get("search") || undefined,
       categoryId: searchParams.get("categoryId") || undefined,
-      isActive: searchParams.has("isActive") ? searchParams.get("isActive") === "true" : undefined,
+      isActive,
     };
 
     const result = await getProducts(filters);
 
     if (!result.success) {
-      return NextResponse.json({ success: false, error: result.error, errors: result.errors }, { status: 400 });
+      // Distinguish validation errors (400) from server errors (500)
+      const isServerError = result.error === "Gagal mengambil daftar produk";
+      console.error("GET /api/products service error:", result.error, result.errors);
+      return NextResponse.json({ success: false, error: result.error, errors: result.errors }, { status: isServerError ? 500 : 400 });
     }
 
     return NextResponse.json({

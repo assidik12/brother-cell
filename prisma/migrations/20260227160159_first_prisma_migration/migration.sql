@@ -32,22 +32,8 @@ CREATE TABLE "admins" (
 );
 
 -- CreateTable
-CREATE TABLE "categories" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "name" TEXT NOT NULL,
-    "slug" TEXT NOT NULL,
-    "description" TEXT,
-    "is_active" BOOLEAN NOT NULL DEFAULT true,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "categories_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "products" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "category_id" UUID NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
     "price" DECIMAL(10,2) NOT NULL,
@@ -106,12 +92,6 @@ CREATE UNIQUE INDEX "profiles_email_key" ON "profiles"("email");
 CREATE UNIQUE INDEX "admins_username_key" ON "admins"("username");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "categories_name_key" ON "categories"("name");
-
--- CreateIndex
-CREATE UNIQUE INDEX "categories_slug_key" ON "categories"("slug");
-
--- CreateIndex
 CREATE INDEX "vouchers_product_id_status_idx" ON "vouchers"("product_id", "status");
 
 -- CreateIndex
@@ -125,9 +105,6 @@ CREATE INDEX "transactions_status_created_at_idx" ON "transactions"("status", "c
 
 -- CreateIndex
 CREATE INDEX "sms_logs_transaction_id_idx" ON "sms_logs"("transaction_id");
-
--- AddForeignKey
-ALTER TABLE "products" ADD CONSTRAINT "products_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "categories"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "vouchers" ADD CONSTRAINT "vouchers_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE CASCADE;
