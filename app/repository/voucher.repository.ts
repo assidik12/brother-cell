@@ -6,7 +6,7 @@
  */
 
 import { prisma } from "@/app/lib/prisma";
-import type { Prisma, VoucherStatus } from "../../generated/prisma/client";
+import type { Prisma, VoucherStatus } from "../generated/prisma/client";
 
 // ==========================================
 // TYPES

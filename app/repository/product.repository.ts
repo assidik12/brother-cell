@@ -1,5 +1,5 @@
 import { prisma } from "@/app/lib/prisma";
-import type { Prisma } from "../../generated/prisma/client";
+import type { Prisma } from "../generated/prisma/client";
 
 /**
  * Product repository (Prisma queries)
