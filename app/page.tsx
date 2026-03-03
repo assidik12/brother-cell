@@ -76,7 +76,7 @@ function ProductEmptyState() {
 // MAIN PAGE COMPONENT
 // ==========================================
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -203,5 +203,18 @@ export default function Home() {
       {/* Transaction Modal */}
       <TransactionModal key={redirectTransaction?.id ?? selectedProduct?.id ?? "no-product"} isOpen={isModalOpen} onClose={handleCloseModal} product={selectedProduct} initialTransaction={redirectTransaction} />
     </main>
+  );
+}
+
+// ==========================================
+// ROOT EXPORT — wraps HomeContent in Suspense
+// required by Next.js when using useSearchParams()
+// ==========================================
+
+export default function Home() {
+  return (
+    <React.Suspense fallback={null}>
+      <HomeContent />
+    </React.Suspense>
   );
 }
