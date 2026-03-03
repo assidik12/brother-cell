@@ -31,9 +31,9 @@ export interface RecentTransaction {
 }
 
 export interface LowStockProduct {
+  id: string;
   name: string;
   stock: number;
-  category: string;
 }
 
 export interface DashboardAdminViewProps {
@@ -98,10 +98,10 @@ const DashboardAdminView: React.FC<DashboardAdminViewProps> = ({ statsData, rece
           </div>
           <div className="divide-y divide-gray-100">
             {lowStockProducts.map((product) => (
-              <div key={product.name} className="flex items-center justify-between px-6 py-4">
+              <div key={product.id} className="flex items-center justify-between px-6 py-4">
                 <div>
                   <p className="font-medium text-gray-900">{product.name}</p>
-                  <p className="text-sm text-gray-500">{product.category}</p>
+                  <p className="text-sm text-gray-500">{product.stock === 0 ? "Tidak ada stok" : `${product.stock} voucher tersedia`}</p>
                 </div>
                 <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", product.stock === 0 ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700")}>{product.stock === 0 ? "Habis" : `${product.stock} tersisa`}</span>
               </div>

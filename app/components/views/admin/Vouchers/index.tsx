@@ -291,7 +291,7 @@ const VoucherAdminView: React.FC<VoucherAdminViewProps> = ({
               value={formData.codes}
               onChange={(e) => onFormChange({ codes: e.target.value })}
               placeholder={`TSEL-0001-XXXX\nTSEL-0002-XXXX\nTSEL-0003-XXXX`}
-              className="h-40 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-mono focus:border-blue-500 focus:outline-none"
+              className="h-40 w-full rounded-xl border border-gray-200 text-gray-700 px-4 py-3 text-sm font-mono focus:border-blue-500 focus:outline-none"
               required
             />
             <p className="mt-2 text-xs text-gray-500">Maksimal 500 kode voucher per batch</p>

@@ -10,6 +10,7 @@ import { z } from "zod";
 import { Phone, CheckCircle, Copy, AlertTriangle } from "lucide-react";
 import { Button, Modal, Input } from "@/app/components/atoms";
 import { formatCurrency } from "@/app/lib/utils";
+import { TransactionAPI, type TransactionRecord, type TransactionPayment } from "@/app/service/transaction/api";
 
 // ==========================================
 // TYPES
@@ -25,18 +26,23 @@ export interface Product {
   updatedAt: Date;
 }
 
-type TransactionStep = "input" | "review" | "payment" | "success";
+type TransactionStep = "input" | "review" | "payment" | "success" | "error";
 
 interface TransactionState {
   step: TransactionStep;
   phoneNumber: string;
   voucherCode: string;
+  transactionId: string;
+  payment: TransactionPayment | null;
+  errorMessage: string;
 }
 
 export interface TransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   product: Product | null;
+  /** When provided, the modal opens directly on the success step (e.g. after a Midtrans finish redirect) */
+  initialTransaction?: TransactionRecord | null;
 }
 
 // ==========================================
@@ -59,15 +65,7 @@ const phoneNumberSchema = z
 // UTILITY FUNCTIONS
 // ==========================================
 
-function generateVoucherCode(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let code = "";
-  for (let i = 0; i < 16; i++) {
-    if (i > 0 && i % 4 === 0) code += "-";
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
+// (removed generateVoucherCode — voucher code now comes from the API)
 
 // ==========================================
 // STEP 1: INPUT COMPONENT
@@ -117,9 +115,10 @@ interface StepReviewProps {
   phoneNumber: string;
   onBack: () => void;
   onNext: () => void;
+  isLoading?: boolean;
 }
 
-function StepReview({ product, phoneNumber, onBack, onNext }: StepReviewProps) {
+function StepReview({ product, phoneNumber, onBack, onNext, isLoading }: StepReviewProps) {
   return (
     <div className="space-y-5 sm:space-y-6">
       <div className="bg-gray-50 rounded-2xl p-4 sm:p-6 space-y-3 sm:space-y-4">
@@ -139,11 +138,11 @@ function StepReview({ product, phoneNumber, onBack, onNext }: StepReviewProps) {
       </div>
 
       <div className="flex gap-3">
-        <Button variant="outline" fullWidth onClick={onBack}>
+        <Button variant="outline" fullWidth onClick={onBack} disabled={isLoading}>
           Kembali
         </Button>
-        <Button fullWidth onClick={onNext}>
-          Bayar Sekarang
+        <Button fullWidth onClick={onNext} isLoading={isLoading}>
+          {isLoading ? "Memproses..." : "Bayar Sekarang"}
         </Button>
       </div>
     </div>
@@ -151,16 +150,86 @@ function StepReview({ product, phoneNumber, onBack, onNext }: StepReviewProps) {
 }
 
 // ==========================================
-// STEP 3: PAYMENT COMPONENT
+// SNAP.JS LOADER HOOK
+// ==========================================
+
+/**
+ * Injects the Midtrans Snap.js script once and resolves when ready.
+ * Client key is fetched from /api/config/payment to avoid embedding it in the bundle.
+ */
+function useSnapScript() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Already loaded
+    if ((window as unknown as Record<string, unknown>).snap) {
+      // Use queueMicrotask to avoid synchronous setState inside effect
+      queueMicrotask(() => setReady(true));
+      return;
+    }
+
+    // Fetch the public client key from our server
+    fetch("/api/config/payment")
+      .then((r) => r.json())
+      .then(({ clientKey, isProduction }: { clientKey: string; isProduction: boolean }) => {
+        const script = document.createElement("script");
+        script.src = isProduction ? "https://app.midtrans.com/snap/snap.js" : "https://app.sandbox.midtrans.com/snap/snap.js";
+        script.setAttribute("data-client-key", clientKey);
+        script.onload = () => setReady(true);
+        document.head.appendChild(script);
+      })
+      .catch((err) => console.error("Failed to load Snap.js", err));
+  }, []);
+
+  return ready;
+}
+
+// ==========================================
+// STEP 3: PAYMENT COMPONENT (Snap popup)
 // ==========================================
 
 interface StepPaymentProps {
   product: Product;
-  onPay: () => void;
-  isProcessing: boolean;
+  snapToken: string;
+  onSuccess: (result: unknown) => void;
+  onPending: (result: unknown) => void;
+  onError: (result: unknown) => void;
+  onClose: () => void;
 }
 
-function StepPayment({ product, onPay, isProcessing }: StepPaymentProps) {
+function StepPayment({ product, snapToken, onSuccess, onPending, onError, onClose }: StepPaymentProps) {
+  const snapReady = useSnapScript();
+  const openedRef = useRef(false);
+
+  // Open the Snap popup once the script is ready and we have a token
+  useEffect(() => {
+    if (!snapReady || !snapToken || openedRef.current) return;
+    openedRef.current = true;
+
+    (
+      window as unknown as {
+        snap: {
+          pay: (
+            token: string,
+            options: {
+              onSuccess: (r: unknown) => void;
+              onPending: (r: unknown) => void;
+              onError: (r: unknown) => void;
+              onClose: () => void;
+            },
+          ) => void;
+        };
+      }
+    ).snap.pay(snapToken, {
+      onSuccess,
+      onPending,
+      onError,
+      onClose,
+    });
+  }, [snapReady, snapToken, onSuccess, onPending, onError, onClose]);
+
   return (
     <div className="space-y-5 sm:space-y-6">
       <div className="text-center">
@@ -168,22 +237,36 @@ function StepPayment({ product, onPay, isProcessing }: StepPaymentProps) {
         <p className="text-2xl sm:text-3xl font-bold text-blue-600">{formatCurrency(product.price)}</p>
       </div>
 
-      {/* QRIS Placeholder */}
-      <div className="bg-gray-50 rounded-2xl p-6 sm:p-8">
-        <div className="w-40 h-40 sm:w-48 sm:h-48 mx-auto bg-white border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center">
-          <div className="text-center p-4">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-xl mx-auto mb-2 flex items-center justify-center">
-              <span className="text-xl sm:text-2xl font-bold text-gray-400">QR</span>
+      <div className="bg-blue-50 rounded-2xl p-6 text-center space-y-3">
+        {snapReady ? (
+          <>
+            <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
+              <CheckCircle className="w-7 h-7 text-blue-600" />
             </div>
-            <p className="text-xs text-gray-400">QRIS Midtrans</p>
-          </div>
-        </div>
-        <p className="text-center text-xs text-gray-400 mt-4">Scan QR code di atas menggunakan aplikasi e-wallet atau mobile banking</p>
+            <p className="font-semibold text-gray-900">Halaman pembayaran telah dibuka</p>
+            <p className="text-sm text-gray-500">Selesaikan pembayaran pada popup Midtrans yang muncul.</p>
+          </>
+        ) : (
+          <>
+            <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto animate-pulse">
+              <div className="w-6 h-6 bg-gray-300 rounded-full" />
+            </div>
+            <p className="font-semibold text-gray-900">Memuat halaman pembayaran...</p>
+          </>
+        )}
       </div>
 
-      <Button fullWidth size="lg" onClick={onPay} isLoading={isProcessing}>
-        {isProcessing ? "Memproses..." : "Saya Sudah Bayar"}
-      </Button>
+      <p className="text-center text-xs text-gray-400">
+        Popup tidak muncul?{" "}
+        <button
+          className="text-blue-600 underline font-medium"
+          onClick={() => {
+            openedRef.current = false;
+          }}
+        >
+          Buka ulang
+        </button>
+      </p>
     </div>
   );
 }
@@ -198,9 +281,11 @@ interface StepSuccessProps {
   voucherCode: string;
   countdown: number;
   onClose: () => void;
+  transaction: TransactionRecord | null;
 }
 
-function StepSuccess({ product, phoneNumber, voucherCode, countdown, onClose }: StepSuccessProps) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function StepSuccess({ product, phoneNumber, voucherCode, countdown, onClose, transaction: _transaction }: StepSuccessProps) {
   const [copied, setCopied] = useState(false);
 
   const copyVoucherCode = async () => {
@@ -297,15 +382,20 @@ function StepSuccess({ product, phoneNumber, voucherCode, countdown, onClose }: 
 // TRANSACTION MODAL (STATE MACHINE)
 // ==========================================
 
-export function TransactionModal({ isOpen, onClose, product }: TransactionModalProps) {
+export function TransactionModal({ isOpen, onClose, product, initialTransaction }: TransactionModalProps) {
   const [state, setState] = useState<TransactionState>({
-    step: "input",
-    phoneNumber: "",
-    voucherCode: "",
+    step: initialTransaction ? "success" : "input",
+    phoneNumber: initialTransaction?.phoneNumber ?? "",
+    voucherCode: initialTransaction?.voucher?.code ?? "",
+    transactionId: initialTransaction?.id ?? "",
+    payment: null,
+    errorMessage: "",
   });
   const [phoneError, setPhoneError] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [countdown, setCountdown] = useState(30);
+  // Hold real transaction record once confirmed
+  const [confirmedTransaction, setConfirmedTransaction] = useState<TransactionRecord | null>(initialTransaction ?? null);
   const shouldCloseRef = useRef(false);
 
   // Separate effect to handle the actual close action
@@ -316,7 +406,37 @@ export function TransactionModal({ isOpen, onClose, product }: TransactionModalP
     }
   });
 
-  // Auto-close countdown untuk step success
+  // Reset state when modal opens/closes
+  useEffect(() => {
+    if (!isOpen) {
+      setState({
+        step: "input",
+        phoneNumber: "",
+        voucherCode: "",
+        transactionId: "",
+        payment: null,
+        errorMessage: "",
+      });
+      setPhoneError("");
+      setIsProcessing(false);
+      setCountdown(30);
+      setConfirmedTransaction(null);
+    } else if (initialTransaction) {
+      // Opened via Midtrans redirect — jump straight to success step
+      setState({
+        step: "success",
+        phoneNumber: initialTransaction.phoneNumber ?? "",
+        voucherCode: initialTransaction.voucher?.code ?? "",
+        transactionId: initialTransaction.id,
+        payment: null,
+        errorMessage: "",
+      });
+      setConfirmedTransaction(initialTransaction);
+      setCountdown(30);
+    }
+  }, [isOpen, initialTransaction]);
+
+  // Auto-close countdown for success step
   useEffect(() => {
     if (state.step !== "success") return;
 
@@ -334,7 +454,7 @@ export function TransactionModal({ isOpen, onClose, product }: TransactionModalP
     return () => clearInterval(timer);
   }, [state.step]);
 
-  // Handler untuk step 1 -> step 2
+  // Step 1 → Step 2: validate phone
   const handleInputNext = useCallback(() => {
     const result = phoneNumberSchema.safeParse(state.phoneNumber);
     if (!result.success) {
@@ -342,39 +462,115 @@ export function TransactionModal({ isOpen, onClose, product }: TransactionModalP
       return;
     }
     setPhoneError("");
-    setState((prev) => ({
-      ...prev,
-      phoneNumber: result.data,
-      step: "review",
-    }));
+    setState((prev) => ({ ...prev, phoneNumber: result.data, step: "review" }));
   }, [state.phoneNumber]);
 
-  // Handler untuk step 2 -> step 1
+  // Step 2 → Step 1
   const handleReviewBack = useCallback(() => {
     setState((prev) => ({ ...prev, step: "input" }));
   }, []);
 
-  // Handler untuk step 2 -> step 3
-  const handleReviewNext = useCallback(() => {
-    setState((prev) => ({ ...prev, step: "payment" }));
-  }, []);
-
-  // Handler untuk step 3 -> step 4
-  const handlePayment = useCallback(() => {
+  // Step 2 → Step 3: call POST /api/transactions (initiate + reserve voucher)
+  const handleReviewNext = useCallback(async () => {
+    if (!product) return;
     setIsProcessing(true);
-    // Simulasi proses pembayaran
-    setTimeout(() => {
-      setIsProcessing(false);
+    try {
+      const res = await TransactionAPI.initiate({
+        productId: product.id,
+        phoneNumber: state.phoneNumber,
+      });
+      const { transaction, payment } = res.data.data;
       setState((prev) => ({
         ...prev,
-        step: "success",
-        voucherCode: generateVoucherCode(),
+        step: "payment",
+        transactionId: transaction.id,
+        payment,
       }));
-      setCountdown(30);
-    }, 2000);
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Gagal membuat transaksi, coba lagi";
+      setState((prev) => ({ ...prev, step: "error", errorMessage: message }));
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [product, state.phoneNumber]);
+
+  // Step 3 → Step 4: Snap callbacks fired by Midtrans popup
+  const handleSnapSuccess = useCallback(
+    async (_result: unknown) => {
+      void _result;
+      if (!state.transactionId) return;
+      setIsProcessing(true);
+      try {
+        const res = await TransactionAPI.confirm(state.transactionId);
+        const confirmed = res.data.data;
+        setConfirmedTransaction(confirmed);
+        setState((prev) => ({
+          ...prev,
+          step: "success",
+          voucherCode: confirmed.voucher?.code ?? "",
+        }));
+        setCountdown(30);
+      } catch (err: unknown) {
+        const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Konfirmasi pembayaran gagal";
+        setState((prev) => ({ ...prev, step: "error", errorMessage: message }));
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [state.transactionId],
+  );
+
+  const handleSnapPending = useCallback((_result: unknown) => {
+    void _result;
+    // Bank-transfer / pending payment — webhook will confirm later
+    setState((prev) => ({
+      ...prev,
+      step: "error",
+      errorMessage: "Pembayaran sedang diproses. Kami akan mengirim notifikasi setelah pembayaran dikonfirmasi.",
+    }));
   }, []);
 
-  // Modal title berdasarkan step
+  const handleSnapError = useCallback(
+    async (_result: unknown) => {
+      void _result;
+      if (state.transactionId) {
+        await TransactionAPI.cancel(state.transactionId).catch(() => null);
+      }
+      setState((prev) => ({
+        ...prev,
+        step: "error",
+        errorMessage: "Pembayaran gagal. Silakan coba lagi.",
+      }));
+    },
+    [state.transactionId],
+  );
+
+  const handleSnapClose = useCallback(async () => {
+    // User dismissed the Snap popup without paying
+    if (state.transactionId && state.step === "payment") {
+      await TransactionAPI.cancel(state.transactionId).catch(() => null);
+      setState((prev) => ({
+        ...prev,
+        step: "error",
+        errorMessage: "Pembayaran dibatalkan. Silakan coba lagi jika ingin melanjutkan.",
+      }));
+    }
+  }, [state.transactionId, state.step]);
+
+  // Error step: retry from the beginning
+  const handleRetry = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      step: "input",
+      transactionId: "",
+      payment: null,
+      errorMessage: "",
+      voucherCode: "",
+    }));
+    setConfirmedTransaction(null);
+  }, []);
+
+  // Modal title per step
   const modalTitle = useMemo(() => {
     switch (state.step) {
       case "input":
@@ -385,12 +581,13 @@ export function TransactionModal({ isOpen, onClose, product }: TransactionModalP
         return "Pembayaran";
       case "success":
         return "";
+      case "error":
+        return "Transaksi Gagal";
       default:
         return "";
     }
   }, [state.step]);
 
-  // Jangan tampilkan close button di step success
   const showCloseButton = state.step !== "success";
 
   if (!product) return null;
@@ -399,11 +596,31 @@ export function TransactionModal({ isOpen, onClose, product }: TransactionModalP
     <Modal isOpen={isOpen} onClose={onClose} title={modalTitle} size="md" showCloseButton={showCloseButton} closeOnOverlayClick={state.step !== "success"}>
       {state.step === "input" && <StepInput phoneNumber={state.phoneNumber} setPhoneNumber={(value) => setState((prev) => ({ ...prev, phoneNumber: value }))} error={phoneError} onNext={handleInputNext} productName={product.name} />}
 
-      {state.step === "review" && <StepReview product={product} phoneNumber={state.phoneNumber} onBack={handleReviewBack} onNext={handleReviewNext} />}
+      {state.step === "review" && <StepReview product={product} phoneNumber={state.phoneNumber} onBack={handleReviewBack} onNext={handleReviewNext} isLoading={isProcessing} />}
 
-      {state.step === "payment" && <StepPayment product={product} onPay={handlePayment} isProcessing={isProcessing} />}
+      {state.step === "payment" && <StepPayment product={product} snapToken={state.payment?.token ?? ""} onSuccess={handleSnapSuccess} onPending={handleSnapPending} onError={handleSnapError} onClose={handleSnapClose} />}
 
-      {state.step === "success" && <StepSuccess product={product} phoneNumber={state.phoneNumber} voucherCode={state.voucherCode} countdown={countdown} onClose={onClose} />}
+      {state.step === "success" && <StepSuccess product={product} phoneNumber={state.phoneNumber} voucherCode={state.voucherCode} countdown={countdown} onClose={onClose} transaction={confirmedTransaction} />}
+
+      {state.step === "error" && (
+        <div className="space-y-5 text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-8 h-8 text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Transaksi Gagal</h3>
+            <p className="text-sm text-gray-500 mt-1">{state.errorMessage}</p>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" fullWidth onClick={onClose}>
+              Tutup
+            </Button>
+            <Button fullWidth onClick={handleRetry}>
+              Coba Lagi
+            </Button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

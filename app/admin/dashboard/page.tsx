@@ -1,112 +1,97 @@
 /**
  * @file app/admin/dashboard/page.tsx
- * @description Halaman Dashboard Admin - hanya logic & state management
- * UI rendering dilakukan di DashboardAdminView
+ * @description Halaman Dashboard Admin - fetches real data via React Query
  */
 
 "use client";
 
 import React, { useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { Package, ShoppingCart, Ticket, DollarSign } from "lucide-react";
 import DashboardAdminView, { StatsData, RecentTransaction, LowStockProduct } from "@/app/components/views/admin/dashboard";
+import DashboardAPI from "@/app/service/dashboard/api";
+import { formatCurrency } from "@/app/lib/utils";
 
 // ==========================================
-// MOCK DATA (Akan diganti dengan React Query)
+// QUERY KEYS
 // ==========================================
 
-const statsData: StatsData[] = [
-  {
-    label: "Total Produk",
-    value: "24",
-    icon: Package,
-    color: "blue",
-    change: "+2 minggu ini",
-  },
-  {
-    label: "Voucher Tersedia",
-    value: "1,250",
-    icon: Ticket,
-    color: "green",
-    change: "85% dari total",
-  },
-  {
-    label: "Transaksi Hari Ini",
-    value: "48",
-    icon: ShoppingCart,
-    color: "purple",
-    change: "+12% dari kemarin",
-  },
-  {
-    label: "Pendapatan Hari Ini",
-    value: "Rp 2.4jt",
-    icon: DollarSign,
-    color: "emerald",
-    change: "+8% dari kemarin",
-  },
-];
-
-const recentTransactions: RecentTransaction[] = [
-  {
-    id: "BC-001",
-    product: "Telkomsel 10rb",
-    phone: "0812****5678",
-    amount: 10500,
-    status: "SUCCESS",
-    time: "2 menit lalu",
-  },
-  {
-    id: "BC-002",
-    product: "XL Data 5GB",
-    phone: "0856****1234",
-    amount: 35000,
-    status: "SUCCESS",
-    time: "5 menit lalu",
-  },
-  {
-    id: "BC-003",
-    product: "Token PLN 50rb",
-    phone: "0878****9012",
-    amount: 50500,
-    status: "PENDING",
-    time: "8 menit lalu",
-  },
-  {
-    id: "BC-004",
-    product: "Indosat 25rb",
-    phone: "0857****3456",
-    amount: 25200,
-    status: "SUCCESS",
-    time: "15 menit lalu",
-  },
-];
-
-const lowStockProducts: LowStockProduct[] = [
-  { name: "XL Data 5GB", stock: 5, category: "Paket Data" },
-  { name: "Tri AON 2GB", stock: 0, category: "Paket Data" },
-  { name: "Smartfren 10rb", stock: 8, category: "Pulsa" },
-];
+const QUERY_KEYS = {
+  dashboard: ["dashboard"] as const,
+};
 
 // ==========================================
-// PAGE COMPONENT (Logic Only)
+// PAGE COMPONENT
 // ==========================================
 
 export default function DashboardPage() {
   const router = useRouter();
 
   // ==========================================
+  // DATA FETCHING
+  // ==========================================
+
+  const { data, isLoading } = useQuery({
+    queryKey: QUERY_KEYS.dashboard,
+    queryFn: () => DashboardAPI.getSummary().then((r) => r.data.data),
+    refetchInterval: 30_000, // auto-refresh every 30 s
+  });
+
+  // ==========================================
+  // DERIVED STATS
+  // ==========================================
+
+  const statsData: StatsData[] = [
+    {
+      label: "Total Produk Aktif",
+      value: isLoading ? "..." : String(data?.stats.totalProducts ?? 0),
+      icon: Package,
+      color: "blue",
+      change: "Produk yang sedang aktif",
+    },
+    {
+      label: "Voucher Tersedia",
+      value: isLoading ? "..." : (data?.stats.totalAvailableVouchers ?? 0).toLocaleString("id-ID"),
+      icon: Ticket,
+      color: "green",
+      change: "Total stok siap dijual",
+    },
+    {
+      label: "Transaksi Hari Ini",
+      value: isLoading ? "..." : String(data?.stats.todayTrxCount ?? 0),
+      icon: ShoppingCart,
+      color: "purple",
+      change: "Transaksi berhasil hari ini",
+    },
+    {
+      label: "Pendapatan Hari Ini",
+      value: isLoading ? "..." : formatCurrency(data?.stats.todayRevenue ?? 0),
+      icon: DollarSign,
+      color: "emerald",
+      change: "Total dari transaksi sukses",
+    },
+  ];
+
+  const recentTransactions: RecentTransaction[] = data?.recentTransactions ?? [];
+
+  const lowStockProducts: LowStockProduct[] = data?.lowStockProducts ?? [];
+
+  // ==========================================
   // HANDLERS
   // ==========================================
+
   const handleViewAllTransactions = useCallback(() => {
-    router.push("/admin/transactions");
+    router.push("/admin/transaction");
   }, [router]);
 
   const handleAddVoucher = useCallback(() => {
-    router.push("/admin/product/voucher");
+    router.push("/admin/product");
   }, [router]);
 
   // ==========================================
-  // RENDER - Pass all data & handlers to View
+  // RENDER
   // ==========================================
+
   return <DashboardAdminView statsData={statsData} recentTransactions={recentTransactions} lowStockProducts={lowStockProducts} onViewAllTransactions={handleViewAllTransactions} onAddVoucher={handleAddVoucher} />;
 }

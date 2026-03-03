@@ -7,9 +7,11 @@
 "use client";
 
 import React, { useState, useCallback, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Navbar, Footer, HeroSection, ContactSection, ProductCatalog, TransactionModal, EmptyState, type Product } from "@/app/components";
 import { ProductAPI } from "@/app/service/product/api";
-import { Package, Loader2 } from "lucide-react";
+import { TransactionAPI, type TransactionRecord } from "@/app/service/transaction/api";
+import { Package } from "lucide-react";
 
 // ==========================================
 // LOADING SKELETON COMPONENT
@@ -75,10 +77,16 @@ function ProductEmptyState() {
 // ==========================================
 
 export default function Home() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // For success-redirect flow: hold the confirmed transaction from Midtrans redirect
+  const [redirectTransaction, setRedirectTransaction] = useState<TransactionRecord | null>(null);
 
   const handleSelectProduct = useCallback((product: Product) => {
     setSelectedProduct(product);
@@ -87,9 +95,55 @@ export default function Home() {
 
   const handleCloseModal = useCallback(() => {
     setIsModalOpen(false);
+    setRedirectTransaction(null);
     // Delay reset selectedProduct untuk animasi smooth
     setTimeout(() => setSelectedProduct(null), 200);
-  }, []);
+    // Clean query params from URL without full reload
+    router.replace("/", { scroll: false });
+  }, [router]);
+
+  // ==========================================
+  // Handle Midtrans finish redirect
+  // e.g. /?order_id=TRX-xxx&transaction_status=settlement
+  // ==========================================
+  useEffect(() => {
+    const orderId = searchParams.get("order_id");
+    const status = searchParams.get("transaction_status");
+
+    if (!orderId || !status) return;
+
+    // Only handle successful / settlement statuses
+    const isSuccess = ["capture", "settlement"].includes(status);
+    if (!isSuccess) return;
+
+    // Fetch the transaction and open the modal in success state
+    TransactionAPI.getByOrderId(orderId)
+      .then(async (res) => {
+        const trx = res.data.data;
+
+        // If the transaction is still PENDING on the server (webhook hasn't fired yet),
+        // confirm it now from the client side
+        if (trx.status === "PENDING") {
+          const confirmed = await TransactionAPI.confirm(trx.id);
+          setRedirectTransaction(confirmed.data.data);
+        } else {
+          setRedirectTransaction(trx);
+        }
+
+        // Find the matching product to populate the modal
+        const productRes = await ProductAPI.getById(trx.productId);
+        const product = productRes.data?.data ?? null;
+        if (product) setSelectedProduct(product);
+
+        setIsModalOpen(true);
+      })
+      .catch((err) => {
+        console.error("Failed to load redirect transaction:", err);
+        // Clean URL even on error
+        router.replace("/", { scroll: false });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -147,7 +201,7 @@ export default function Home() {
       <Footer />
 
       {/* Transaction Modal */}
-      <TransactionModal key={selectedProduct?.id ?? "no-product"} isOpen={isModalOpen} onClose={handleCloseModal} product={selectedProduct} />
+      <TransactionModal key={redirectTransaction?.id ?? selectedProduct?.id ?? "no-product"} isOpen={isModalOpen} onClose={handleCloseModal} product={selectedProduct} initialTransaction={redirectTransaction} />
     </main>
   );
 }
